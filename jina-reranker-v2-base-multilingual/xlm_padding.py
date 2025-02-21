@@ -97,6 +97,14 @@ class IndexFirstAxisResidual(torch.autograd.Function):
 
 index_first_axis_residual = IndexFirstAxisResidual.apply
 
+# @torch._dynamo.disable
+# def mark_unpadded_dynamic(unpadded, hidden_states):
+#     torch._dynamo.mark_dynamic(
+#         unpadded,
+#         0,
+#         min=8,
+#         max=hidden_states.size(0) * hidden_states.size(1)
+#     )
 
 # def unpad_input(hidden_states, attention_mask):
 #     """
@@ -118,22 +126,33 @@ index_first_axis_residual = IndexFirstAxisResidual.apply
 #     # times larger than it needs to be, wasting memory. It's faster and more memory-efficient to
 #     # index with integer indices. Moreover, torch's index is a bit slower than it needs to be,
 #     # so we write custom forward and backward to make it a bit faster.
+#     unpadded = index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices)
+#     mark_unpadded_dynamic(unpadded, hidden_states)
 #     return (
-#         index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices),
+#         unpadded,
 #         indices,
 #         cu_seqlens,
 #         max_seqlen_in_batch,
 #     )
 
+@torch._dynamo.disable
+def mark_dynamic_hidden_states(tensor, batch, seqlen):
+    # Mark dimension 0 as dynamic (for the flattened token count)
+    # Adjust min/max as appropriate for your expected range.
+    torch._dynamo.mark_dynamic(tensor, 0, min=batch * 8, max=batch * 512)
+    return tensor
+
 def unpad_input(hidden_states, key_padding_mask):
     # Assume hidden_states.shape is (batch, seqlen, hidden)
     batch, seqlen = hidden_states.shape[:2]
-    # Instead of computing dynamic indices based on key_padding_mask,
-    # force fixed indices and cu_seqlens.
+    # Use fixed indices for simplicity.
     indices = torch.arange(batch * seqlen, device=hidden_states.device)
     cu_seqlens = torch.arange(0, (batch + 1) * seqlen, seqlen, device=hidden_states.device, dtype=torch.int32)
     # Flatten hidden_states to (batch * seqlen, hidden)
-    return hidden_states.view(-1, hidden_states.shape[-1]), indices, cu_seqlens, seqlen
+    unpadded = hidden_states.view(-1, hidden_states.shape[-1])
+    # Mark dynamic now so that when unpadded is passed into a layer, it doesn't trigger a recompile:
+    unpadded = mark_dynamic_hidden_states(unpadded, batch, seqlen)
+    return unpadded, indices, cu_seqlens, seqlen
 
 # def unpad_input(hidden_states, key_padding_mask):
 #     # Assume hidden_states.shape is (batch, seqlen, hidden)
@@ -236,15 +255,23 @@ def unpad_input_for_concatenated_sequences(hidden_states, attention_mask_in_leng
 def pad_input(hidden_states, indices, batch, seqlen):
     """
     Arguments:
-        hidden_states: (total_nnz, ...), where total_nnz = number of tokens in selected in attention_mask.
-        indices: (total_nnz), the indices that represent the non-masked tokens of the original padded input sequence.
-        batch: int, batch size for the padded sequence.
+        hidden_states: (total_nnz, ...), where total_nnz = number of tokens
+        indices: (total_nnz), indices of non-masked tokens
+        batch: int, batch size
         seqlen: int, maximum sequence length for the padded sequence.
     Return:
         hidden_states: (batch, seqlen, ...)
     """
-    dim = hidden_states.shape[-1]
-    # output = torch.zeros((batch * seqlen), dim, device=hidden_states.device, dtype=hidden_states.dtype)
-    # output[indices] = hidden_states
+    # Reassemble the padded tensor from flattened tokens.
     output = index_put_first_axis(hidden_states, indices, batch * seqlen)
-    return rearrange(output, "(b s) ... -> b s ...", b=batch)
+    output = rearrange(output, "(b s) ... -> b s ...", b=batch)
+    # Mark the sequence dimension (dim=1) as dynamic.
+    output = _mark_dynamic_pad_output(output, seqlen)
+    return output
+
+@torch._dynamo.disable
+def _mark_dynamic_pad_output(output, seqlen):
+    # Instead of using the current seqlen as max, use the overall possible max.
+    # For example, if BUCKETS = [16, 32, …, 512]:
+    torch._dynamo.mark_dynamic(output, 1, min=8, max=512)
+    return output
