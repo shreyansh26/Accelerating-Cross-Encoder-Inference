@@ -1,0 +1,4 @@
+**/onnx
+**/model.safetensors
+**/pytorch_model.bin
+__pycache__
