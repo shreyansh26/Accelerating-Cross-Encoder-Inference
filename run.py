@@ -16,5 +16,4 @@ model = CrossEncoder(
 model.model = torch.compile(model.model, backend="inductor", mode="max-autotune")
 
 # test_model(model)
-benchmark(model)
-# Mean time: 0.0630 ± 0.0024 seconds
+benchmark(model, print_scores=True, on_sorted_inputs=False)
