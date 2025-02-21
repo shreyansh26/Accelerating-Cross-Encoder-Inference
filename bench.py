@@ -5,7 +5,7 @@ import random
 import nltk
 nltk.download('punkt')
 
-def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10):
+def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10, base_seed=100):
     # Read the file
     with open('data/sample_data.txt', 'r') as f:
         text = f.read()
@@ -15,7 +15,10 @@ def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10)
     
     # Generate random pairs
     pairs = []
-    for _ in range(num_pairs):
+    for i in range(num_pairs):
+        # Set unique seed for each iteration if base_seed provided
+        random.seed(base_seed + i)
+            
         # Sample random sentences for first text
         n1 = random.randint(min_sentences, max_sentences)
         text1 = ' '.join(random.sample(sentences, n1))
@@ -25,22 +28,23 @@ def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10)
         text2 = ' '.join(random.sample(sentences, n2))
         
         pairs.append([text1, text2])
-    
+        
     return pairs
 
 def inference(model, sentence_pairs):
-    scores = model.predict(sentence_pairs, convert_to_tensor=True, batch_size=32)
+    scores = model.predict(sentence_pairs, convert_to_tensor=True, batch_size=64)
     
     return scores
 
 def test_model(model):
-    sentence_pairs = load_and_sample_sentences(num_pairs=64)
-    scores = model.predict(sentence_pairs, convert_to_tensor=True)
-    print(scores.tolist())
+    sentence_pairs = load_and_sample_sentences(num_pairs=64, base_seed=42)
+    print(sentence_pairs[:10])
+    scores = model.predict(sentence_pairs, convert_to_tensor=True, batch_size=64)
+    print(scores.tolist()[:10])
 
-def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=None, on_sorted_inputs=False):
-    sentence_pairs_warmup = load_and_sample_sentences(num_pairs=512)
-    sentence_pairs = load_and_sample_sentences(num_pairs=1024)
+def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=None, on_sorted_inputs=False, seed=100):  
+    sentence_pairs_warmup = load_and_sample_sentences(num_pairs=512, base_seed=seed)
+    sentence_pairs = load_and_sample_sentences(num_pairs=1024, base_seed=2*seed)
 
     indices = None
     if on_sorted_inputs:
@@ -55,40 +59,41 @@ def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=Non
     print([len(model.tokenizer.encode(x)) for x in sentence_pairs])
     print(f"Total pairs: {len(sentence_pairs)}")
 
-    # Warmup
-    print("Warming up...")
-    for _ in range(10):
-        sentence_pairs_warmup = load_and_sample_sentences(num_pairs=512)
-        _ = inference(model, sentence_pairs_warmup)
+    with torch.inference_mode():
+        # Warmup
+        print("Warming up...")
+        for i in range(10):
+            sentence_pairs_warmup = load_and_sample_sentences(num_pairs=2048, base_seed=seed + i)
+            _ = inference(model, sentence_pairs_warmup)
 
-    # Multiple benchmark runs
-    print("Benchmarking...")
-    times = []
+        # Multiple benchmark runs
+        print("Benchmarking...")
+        times = []
 
-    for i in range(num_runs):
-        sentence_pairs = load_and_sample_sentences(num_pairs=1024)
-        torch.cuda.synchronize()
-        start_time = time.perf_counter()
-        
-        scores = inference(model, sentence_pairs)
+        for i in range(num_runs):
+            sentence_pairs = load_and_sample_sentences(num_pairs=1024, base_seed=2*seed + i)
+            torch.cuda.synchronize()
+            start_time = time.perf_counter()
             
-        torch.cuda.synchronize()
-        end_time = time.perf_counter()
-        times.append(end_time - start_time)
-    
-    # Restore original order if sorted
-    if on_sorted_inputs and scores is not None:
-        original_scores = torch.zeros_like(scores)
-        original_scores[indices] = scores
-        scores = original_scores
+            scores = inference(model, sentence_pairs)
+                
+            torch.cuda.synchronize()
+            end_time = time.perf_counter()
+            times.append(end_time - start_time)
+        
+        # Restore original order if sorted
+        if on_sorted_inputs and scores is not None:
+            original_scores = torch.zeros_like(scores)
+            original_scores[indices] = scores
+            scores = original_scores
 
-    if trace is not None:
-        with torch.profiler.profile() as prof:
-            for i in range(1, 2):
-                scores = inference(model, sentence_pairs)
-                prof.step()
+        if trace is not None:
+            with torch.profiler.profile() as prof:
+                for i in range(1, 2):
+                    scores = inference(model, sentence_pairs)
+                    prof.step()
 
-        prof.export_chrome_trace(f"trace/{trace}.json")
+            prof.export_chrome_trace(f"trace/{trace}.json")
 
     if print_scores:
         print(scores.tolist())
