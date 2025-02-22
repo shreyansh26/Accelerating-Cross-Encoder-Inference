@@ -2,3 +2,4 @@
 **/model.safetensors
 **/pytorch_model.bin
 __pycache__
+jina-reranker-v2-base-multilingual
