@@ -214,11 +214,9 @@ class XLMRobertaEncoder(nn.Module):
                 hidden_states = hidden_states[subset_mask]
         else:
             batch, seqlen = hidden_states.shape[:2]
-            # print(f"batch: {batch}, seqlen: {seqlen}")
             hidden_states, indices, cu_seqlens, max_seqlen_in_batch = unpad_input(
                 hidden_states, key_padding_mask
             )
-            # print(f"hidden_states: {hidden_states.shape}, indices: {indices.shape}, cu_seqlens: {cu_seqlens.shape}, max_seqlen_in_batch: {max_seqlen_in_batch}")
             mixer_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen_in_batch}
             if subset_mask is None:
                 for layer in self.layers:

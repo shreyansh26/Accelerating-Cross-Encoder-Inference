@@ -97,84 +97,33 @@ class IndexFirstAxisResidual(torch.autograd.Function):
 
 index_first_axis_residual = IndexFirstAxisResidual.apply
 
-# @torch._dynamo.disable
-# def mark_unpadded_dynamic(unpadded, hidden_states):
-#     torch._dynamo.mark_dynamic(
-#         unpadded,
-#         0,
-#         min=8,
-#         max=hidden_states.size(0) * hidden_states.size(1)
-#     )
 
-# def unpad_input(hidden_states, attention_mask):
-#     """
-#     Arguments:
-#         hidden_states: (batch, seqlen, ...)
-#         attention_mask: (batch, seqlen), bool / int, 1 means valid and 0 means not valid.
-#     Return:
-#         hidden_states: (total_nnz, ...), where total_nnz = number of tokens in selected in attention_mask.
-#         indices: (total_nnz), the indices of non-masked tokens from the flattened input sequence.
-#         cu_seqlens: (batch + 1), the cumulative sequence lengths, used to index into hidden_states.
-#         max_seqlen_in_batch: int
-#     """
-#     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
-#     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
-#     max_seqlen_in_batch = seqlens_in_batch.max().item()
-#     cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.torch.int32), (1, 0))
-#     # TD [2022-03-04] We don't want to index with a bool mask, because Pytorch will expand the
-#     # bool mask, then call nonzero to get the indices, then index with those. The indices is @dim
-#     # times larger than it needs to be, wasting memory. It's faster and more memory-efficient to
-#     # index with integer indices. Moreover, torch's index is a bit slower than it needs to be,
-#     # so we write custom forward and backward to make it a bit faster.
-#     unpadded = index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices)
-#     mark_unpadded_dynamic(unpadded, hidden_states)
-#     return (
-#         unpadded,
-#         indices,
-#         cu_seqlens,
-#         max_seqlen_in_batch,
-#     )
-
-@torch._dynamo.disable
-def mark_dynamic_hidden_states(tensor, batch, seqlen):
-    # Mark dimension 0 as dynamic (for the flattened token count)
-    # Adjust min/max as appropriate for your expected range.
-    torch._dynamo.mark_dynamic(tensor, 0, min=batch * 8, max=batch * 512)
-    return tensor
-
-def unpad_input(hidden_states, key_padding_mask):
-    # Assume hidden_states.shape is (batch, seqlen, hidden)
-    batch, seqlen = hidden_states.shape[:2]
-    # Use fixed indices for simplicity.
-    indices = torch.arange(batch * seqlen, device=hidden_states.device)
-    cu_seqlens = torch.arange(0, (batch + 1) * seqlen, seqlen, device=hidden_states.device, dtype=torch.int32)
-    # Flatten hidden_states to (batch * seqlen, hidden)
-    unpadded = hidden_states.view(-1, hidden_states.shape[-1])
-    # Mark dynamic now so that when unpadded is passed into a layer, it doesn't trigger a recompile:
-    unpadded = mark_dynamic_hidden_states(unpadded, batch, seqlen)
-    return unpadded, indices, cu_seqlens, seqlen
-
-# def unpad_input(hidden_states, key_padding_mask):
-#     # Assume hidden_states.shape is (batch, seqlen, hidden)
-#     batch, seqlen = hidden_states.shape[:2]
-    
-#     # Instead of using nonzero, we can use cumsum for sequence lengths
-#     seqlens_in_batch = key_padding_mask.sum(dim=-1, dtype=torch.int32)
-#     max_seqlen_in_batch = seqlens_in_batch.max().item()
-    
-#     # Create cumulative sequence lengths
-#     cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.int32), (1, 0))
-    
-#     # Create indices based on the mask directly
-#     indices = torch.arange(batch * seqlen, device=hidden_states.device)[key_padding_mask.flatten()]
-    
-#     # Get the valid tokens using masked_select instead of indexing
-#     valid_tokens = torch.masked_select(
-#         hidden_states.view(-1, hidden_states.shape[-1]),
-#         key_padding_mask.flatten().unsqueeze(-1)
-#     ).view(-1, hidden_states.shape[-1])
-    
-#     return valid_tokens, indices, cu_seqlens, max_seqlen_in_batch
+def unpad_input(hidden_states, attention_mask):
+    """
+    Arguments:
+        hidden_states: (batch, seqlen, ...)
+        attention_mask: (batch, seqlen), bool / int, 1 means valid and 0 means not valid.
+    Return:
+        hidden_states: (total_nnz, ...), where total_nnz = number of tokens in selected in attention_mask.
+        indices: (total_nnz), the indices of non-masked tokens from the flattened input sequence.
+        cu_seqlens: (batch + 1), the cumulative sequence lengths, used to index into hidden_states.
+        max_seqlen_in_batch: int
+    """
+    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
+    indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
+    max_seqlen_in_batch = seqlens_in_batch.max().item()
+    cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.torch.int32), (1, 0))
+    # TD [2022-03-04] We don't want to index with a bool mask, because Pytorch will expand the
+    # bool mask, then call nonzero to get the indices, then index with those. The indices is @dim
+    # times larger than it needs to be, wasting memory. It's faster and more memory-efficient to
+    # index with integer indices. Moreover, torch's index is a bit slower than it needs to be,
+    # so we write custom forward and backward to make it a bit faster.
+    return (
+        index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices),
+        indices,
+        cu_seqlens,
+        max_seqlen_in_batch,
+    )
 
 
 def unpad_input_for_concatenated_sequences(hidden_states, attention_mask_in_length):
@@ -255,23 +204,15 @@ def unpad_input_for_concatenated_sequences(hidden_states, attention_mask_in_leng
 def pad_input(hidden_states, indices, batch, seqlen):
     """
     Arguments:
-        hidden_states: (total_nnz, ...), where total_nnz = number of tokens
-        indices: (total_nnz), indices of non-masked tokens
-        batch: int, batch size
+        hidden_states: (total_nnz, ...), where total_nnz = number of tokens in selected in attention_mask.
+        indices: (total_nnz), the indices that represent the non-masked tokens of the original padded input sequence.
+        batch: int, batch size for the padded sequence.
         seqlen: int, maximum sequence length for the padded sequence.
     Return:
         hidden_states: (batch, seqlen, ...)
     """
-    # Reassemble the padded tensor from flattened tokens.
+    dim = hidden_states.shape[-1]
+    # output = torch.zeros((batch * seqlen), dim, device=hidden_states.device, dtype=hidden_states.dtype)
+    # output[indices] = hidden_states
     output = index_put_first_axis(hidden_states, indices, batch * seqlen)
-    output = rearrange(output, "(b s) ... -> b s ...", b=batch)
-    # Mark the sequence dimension (dim=1) as dynamic.
-    output = _mark_dynamic_pad_output(output, seqlen)
-    return output
-
-@torch._dynamo.disable
-def _mark_dynamic_pad_output(output, seqlen):
-    # Instead of using the current seqlen as max, use the overall possible max.
-    # For example, if BUCKETS = [16, 32, …, 512]:
-    torch._dynamo.mark_dynamic(output, 1, min=8, max=512)
-    return output
+    return rearrange(output, "(b s) ... -> b s ...", b=batch)
