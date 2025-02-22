@@ -1,4 +1,4 @@
-from ce_orig import CrossEncoder
+from sentence_transformers import CrossEncoder
 from bench import benchmark
 
 model = CrossEncoder(
@@ -11,5 +11,5 @@ model = CrossEncoder(
 
 benchmark(model, print_scores=False, on_sorted_inputs=False)
 
-# With Flash Attention - Mean time: 0.2846 ± 0.0091 seconds
+# With Flash Attention - Mean time: 0.2952 ± 0.0152 seconds
 # Without Flash Attention - Mean time: 0.3508 ± 0.0089 seconds
