@@ -1,84 +1,41 @@
 import torch
 from ce_orig import CrossEncoder
 from bench import benchmark, test_model
-from transformers import AutoConfig
-# Enable dynamic shape handling
-torch._dynamo.config.capture_scalar_outputs = True
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 BUCKETS = list(range(16, 512, 16))
+
 class DynamicCrossEncoder(CrossEncoder):
     def smart_batching_collate_text_only(self, batch):
-        texts = [[] for _ in range(len(batch[0]))]
-        
-        for example in batch:
-            for idx, text in enumerate(example):
-                texts[idx].append(text.strip())
-
+        texts = [[text.strip() for text in field] for field in zip(*batch)]
         tokenized = self.tokenizer(
             *texts,
-            padding=True,  # Use True instead of max_length
-            truncation='longest_first',
+            padding=True,
+            truncation="longest_first",
             return_tensors="pt",
             max_length=self.max_length
         )
+        tokenized = {k: v.to(self.model.device) for k, v in tokenized.items()}
 
-        # Move each tensor to device and mark the sequence dim as dynamic
-        for name in tokenized:
-            tokenized[name] = tokenized[name].to(self.model.device)
-            # torch._dynamo.mark_dynamic(tokenized[name], -2, min=8, max=512)
-
-        # Pad each field to the closest bucket in BUCKETS (multiples of 16)
-        # We assume that all tokenized outputs share the same sequence length.
+        # Pad each field to the closest bucket length (multiples of 16)
         cur_length = tokenized["input_ids"].size(1)
-        # Find the next bucket value that is >= current length; default to cur_length if none found
         bucket_length = next((b for b in BUCKETS if b >= cur_length), cur_length)
         if bucket_length > cur_length:
-            for key in tokenized:
+            diff = bucket_length - cur_length
+            for key, val in tokenized.items():
                 pad_value = self.tokenizer.pad_token_id if key == "input_ids" else 0
-                # Pad along the sequence length dimension (last dim)
-                tokenized[key] = torch.nn.functional.pad(
-                    tokenized[key],
-                    (0, bucket_length - cur_length),
-                    value=pad_value
-                )
-                torch._dynamo.mark_dynamic(tokenized[key], -2, min=8, max=512)
-                # print(key, tokenized[key].shape)
+                tokenized[key] = torch.nn.functional.pad(val, (0, diff), value=pad_value)
         return tokenized
-
-# class DynamicCrossEncoder(CrossEncoder):
-#     def smart_batching_collate_text_only(self, batch):
-#         texts = [[] for _ in range(len(batch[0]))]
-        
-#         for example in batch:
-#             for idx, text in enumerate(example):
-#                 texts[idx].append(text.strip())
-
-#         tokenized = self.tokenizer(
-#             *texts,
-#             padding=True,  # Use True instead of max_length
-#             truncation='longest_first',
-#             return_tensors="pt",
-#             max_length=self.max_length
-#         )
-        
-#         for name in tokenized:
-#             tokenized[name] = tokenized[name].to(self.model.device)
-#             # Mark sequence length dimension as dynamic
-#             torch._dynamo.mark_dynamic(tokenized[name], 1, min=8, max=512)
-#         return tokenized
 
 model = CrossEncoder(
     "jinaai/jina-reranker-v2-base-multilingual",
     trust_remote_code=True,
-    device="cuda"
+    device="cuda",
+    max_length=512
 )
-print("Done")
 
 model_compile = DynamicCrossEncoder(
-    "jina-reranker-v2-base-multilingual",
+    "jinaai/jina-reranker-v2-base-multilingual",
     trust_remote_code=True,
-    local_files_only=True,
     device="cuda",
     config_args={"use_flash_attn": False}
 )
@@ -90,8 +47,8 @@ model_compile.model.forward = torch.compile(
     dynamic=True
 )
 
-benchmark(model, print_scores=False, on_sorted_inputs=False, seed=100)
-benchmark(model_compile, print_scores=False, on_sorted_inputs=False, seed=100)
+benchmark(model, print_scores=True, seed=100)
+benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=100)
 
 test_model(model)
 test_model(model_compile)
