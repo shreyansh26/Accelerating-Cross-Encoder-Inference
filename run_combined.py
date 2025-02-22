@@ -47,7 +47,7 @@ model_compile.model.forward = torch.compile(
     dynamic=True
 )
 
-benchmark(model, print_scores=True, seed=100)
+benchmark(model, print_scores=True, on_sorted_inputs=True, seed=100)
 benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=100)
 
 test_model(model)
