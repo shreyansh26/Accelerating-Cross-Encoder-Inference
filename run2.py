@@ -9,7 +9,6 @@ torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 
 BUCKETS = list(range(16, 512, 16))
-
 class DynamicCrossEncoder(CrossEncoder):
     def smart_batching_collate_text_only(self, batch):
         texts = [[] for _ in range(len(batch[0]))]
@@ -49,20 +48,19 @@ class DynamicCrossEncoder(CrossEncoder):
                 # print(key, tokenized[key].shape)
         return tokenized
 
-model = DynamicCrossEncoder(
+model_compile = DynamicCrossEncoder(
     "jina-reranker-v2-base-multilingual",
     trust_remote_code=True,
     local_files_only=True,
-    device="cuda"
+    device="cuda",
+    config_args={"use_flash_attn": False}
 )
 
-print(model.model.dtype)
-# Compile the forward pass only, not the entire model
-model.model.forward = torch.compile(
-    model.model.forward, 
+model_compile.model.forward = torch.compile(
+    model_compile.model.forward, 
     backend="inductor",
     mode="max-autotune",
     dynamic=True
 )
 
-benchmark(model, print_scores=True, on_sorted_inputs=False)
+benchmark(model_compile, print_scores=False, on_sorted_inputs=False, seed=1000)
