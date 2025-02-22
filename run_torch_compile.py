@@ -2,12 +2,6 @@ import torch
 from sentence_transformers import CrossEncoder
 from bench import benchmark
 
-# Enable dynamic shape handling
-torch._dynamo.config.capture_scalar_outputs = True
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
-# torch._inductor.config.triton.cudagraph_skip_dynamic_graphs=True
-
-
 BUCKETS = list(range(16, 512, 16))
 class DynamicCrossEncoder(CrossEncoder):
     def smart_batching_collate_text_only(self, batch):
@@ -46,7 +40,7 @@ model_compile.model.forward = torch.compile(
     dynamic=True
 )
 
-benchmark(model_compile, print_scores=True, on_sorted_inputs=False, seed=1000)
+benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=1000)
 
 # Sorted Inputs - Mean time: 0.2206 ± 0.0107 seconds
 # Unsorted Inputs - Mean time: 0.2673 ± 0.0046 seconds
