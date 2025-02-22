@@ -5,12 +5,10 @@ import random
 import nltk
 nltk.download('punkt')
 
-def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10, base_seed=100):
-    # Read the file
+def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=15, base_seed=100):
     with open('data/sample_data.txt', 'r') as f:
         text = f.read()
     
-    # Split into sentences
     sentences = nltk.sent_tokenize(text)
     
     # Generate random pairs
@@ -19,11 +17,9 @@ def load_and_sample_sentences(num_pairs=1024, min_sentences=2, max_sentences=10,
         # Set unique seed for each iteration if base_seed provided
         random.seed(base_seed + i)
             
-        # Sample random sentences for first text
         n1 = random.randint(min_sentences, max_sentences)
         text1 = ' '.join(random.sample(sentences, n1))
         
-        # Sample random sentences for second text
         n2 = random.randint(min_sentences, max_sentences)
         text2 = ' '.join(random.sample(sentences, n2))
         
@@ -43,16 +39,9 @@ def test_model(model):
         scores = inference(model, sentence_pairs)
         print(scores.tolist()[:10])
 
-def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=None, on_sorted_inputs=False, seed=100):  
+def benchmark(model, print_scores=False, num_runs=10, trace=None, seed=100, on_sorted_inputs=False):  
     sentence_pairs_warmup = load_and_sample_sentences(num_pairs=512, base_seed=seed)
     sentence_pairs = load_and_sample_sentences(num_pairs=1024, base_seed=2*seed)
-
-    indices = None
-    if on_sorted_inputs:
-        # Sort by length before timing
-        indices = list(range(len(sentence_pairs)))
-        indices.sort(key=lambda i: len(model.tokenizer.encode(sentence_pairs[i][0] + sentence_pairs[i][1])), reverse=True)
-        sentence_pairs = [sentence_pairs[i] for i in indices]
 
     print(max([len(model.tokenizer.encode(x)) for x in sentence_pairs]))
     print(max([len(model.tokenizer.encode(x)) for x in sentence_pairs_warmup]))
@@ -73,20 +62,32 @@ def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=Non
 
         for i in range(num_runs):
             sentence_pairs = load_and_sample_sentences(num_pairs=1024, base_seed=2*seed + i)
+            
+            if on_sorted_inputs:
+                # Sort by max length of each pair
+                lengths = [(max(len(model.tokenizer.encode(p[0])), len(model.tokenizer.encode(p[1]))), i) 
+                          for i, p in enumerate(sentence_pairs)]
+                sorted_indices = [i for _, i in sorted(lengths, reverse=True)]
+                sentence_pairs_sorted = [sentence_pairs[i] for i in sorted_indices]
+            else:
+                sentence_pairs_sorted = sentence_pairs
+                sorted_indices = None
+
             torch.cuda.synchronize()
             start_time = time.perf_counter()
             
-            scores = inference(model, sentence_pairs)
+            scores = inference(model, sentence_pairs_sorted)
+            
+            if on_sorted_inputs:
+                # Restore original order
+                original_scores = torch.empty_like(scores)
+                for new_idx, orig_idx in enumerate(sorted_indices):
+                    original_scores[orig_idx] = scores[new_idx]
+                scores = original_scores
                 
             torch.cuda.synchronize()
             end_time = time.perf_counter()
             times.append(end_time - start_time)
-        
-        # Restore original order if sorted
-        if on_sorted_inputs and scores is not None:
-            original_scores = torch.zeros_like(scores)
-            original_scores[indices] = scores
-            scores = original_scores
 
         if trace is not None:
             with torch.profiler.profile() as prof:
@@ -97,10 +98,10 @@ def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=Non
             prof.export_chrome_trace(f"trace/{trace}.json")
 
     if print_scores:
-        print(scores.tolist())
+        print(scores.tolist()[:10])
         
-    mean_time = sum(times) / len(times)
-    std_time = (sum((t - mean_time) ** 2 for t in times) / len(times)) ** 0.5
+    mean_time = sum(times[-5:]) / len(times[-5:])
+    std_time = (sum((t - mean_time) ** 2 for t in times[-5:]) / len(times[-5:])) ** 0.5
     
     print(f"Inference times: {[f'{t:.4f}' for t in times]}")
     print(f"Mean time: {mean_time:.4f} ± {std_time:.4f} seconds")
