@@ -38,9 +38,10 @@ def inference(model, sentence_pairs):
 
 def test_model(model):
     sentence_pairs = load_and_sample_sentences(num_pairs=64, base_seed=42)
-    print(sentence_pairs[:10])
-    scores = model.predict(sentence_pairs, convert_to_tensor=True, batch_size=64)
-    print(scores.tolist()[:10])
+    # print(sentence_pairs[:10])
+    with torch.inference_mode():
+        scores = inference(model, sentence_pairs)
+        print(scores.tolist()[:10])
 
 def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=None, on_sorted_inputs=False, seed=100):  
     sentence_pairs_warmup = load_and_sample_sentences(num_pairs=512, base_seed=seed)
@@ -56,7 +57,7 @@ def benchmark(model, print_scores=False, num_runs=5, cuda_graph=False, trace=Non
     print(max([len(model.tokenizer.encode(x)) for x in sentence_pairs]))
     print(max([len(model.tokenizer.encode(x)) for x in sentence_pairs_warmup]))
 
-    print([len(model.tokenizer.encode(x)) for x in sentence_pairs])
+    # print([len(model.tokenizer.encode(x)) for x in sentence_pairs])
     print(f"Total pairs: {len(sentence_pairs)}")
 
     with torch.inference_mode():
