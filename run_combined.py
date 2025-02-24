@@ -47,13 +47,13 @@ model_compile.model.forward = torch.compile(
     dynamic=True
 )
 
-benchmark(model, print_scores=True, on_sorted_inputs=False, seed=100)
-benchmark(model_compile, print_scores=True, on_sorted_inputs=False, seed=100)
+benchmark(model, print_scores=True, on_sorted_inputs=True, seed=100)
+benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=100)
 
 test_model(model)
 test_model(model_compile)
 
-# Base (with flash attn) + Sorted Inputs - Mean time: 0.2721 ± 0.0060 seconds
-# Base (with flash attn) + Unsorted Inputs - Mean time: 0.3007 ± 0.0141 seconds
-# torch.compile (without flash attn) + Sorted Inputs - Mean time: 0.2104 ± 0.0035 seconds
-# torch.compile (without flash attn) + Unsorted Inputs - Mean time: 0.2570 ± 0.0118 seconds
+# Base (with flash attn) + Sorted Inputs - Mean time: 0.2658 ± 0.0119 seconds
+# Base (with flash attn) + Unsorted Inputs - Mean time: 0.2961 ± 0.0089 seconds
+# torch.compile (without flash attn) + Sorted Inputs - Mean time: 0.2089 ± 0.0196 seconds
+# torch.compile (without flash attn) + Unsorted Inputs - Mean time: 0.2595 ± 0.0077 seconds

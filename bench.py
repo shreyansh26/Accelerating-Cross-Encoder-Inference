@@ -65,7 +65,7 @@ def benchmark(model, print_scores=False, num_runs=10, trace=None, seed=100, on_s
             
             if on_sorted_inputs:
                 # Sort by max length of each pair
-                lengths = [(max(len(model.tokenizer.encode(p[0])), len(model.tokenizer.encode(p[1]))), i) 
+                lengths = [(len(model.tokenizer.encode(p[0])) + len(model.tokenizer.encode(p[1])), i) 
                           for i, p in enumerate(sentence_pairs)]
                 sorted_indices = [i for _, i in sorted(lengths, reverse=True)]
                 sentence_pairs_sorted = [sentence_pairs[i] for i in sorted_indices]

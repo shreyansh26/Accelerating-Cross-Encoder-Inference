@@ -42,5 +42,5 @@ model_compile.model.forward = torch.compile(
 
 benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=1000)
 
-# Sorted Inputs - Mean time: 0.2206 ± 0.0107 seconds
+# Sorted Inputs - Mean time: 0.2106 ± 0.0019 seconds
 # Unsorted Inputs - Mean time: 0.2673 ± 0.0046 seconds
