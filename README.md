@@ -1,7 +1,7 @@
 # Optimizing Jina Cross Encoder with torch.compile
 
 ## Overview
-This project demonstrates optimizing the inference of the Jina Cross Encoder, namely [jinaai/jina-reranker-v2-base-multilingual](https://huggingface.co/jinaai/jina-reranker-v2-base-multilingual), by leveraging torch.compile. The scripts compare baseline performance against a torch.compile-optimized version using a custom padding approach.
+This project demonstrates optimizing the inference of a Cross Encoder model, namely [jinaai/jina-reranker-v2-base-multilingual](https://huggingface.co/jinaai/jina-reranker-v2-base-multilingual), by leveraging torch.compile. The scripts compare baseline performance against a torch.compile-optimized version using a custom padding approach.
 
 ## Setup
 - Python 3.8+
