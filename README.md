@@ -3,6 +3,8 @@
 ## Overview
 This project demonstrates optimizing the inference of a Cross Encoder model, namely [jinaai/jina-reranker-v2-base-multilingual](https://huggingface.co/jinaai/jina-reranker-v2-base-multilingual), by leveraging torch.compile. The scripts compare baseline performance against a torch.compile-optimized version using a custom padding approach.
 
+**Blog post describing the approach in detail** - https://shreyansh26.github.io/post/2025-03-02_cross-encoder-inference-torch-compile/
+
 ## Setup
 - Python 3.8+
 - PyTorch with CUDA support
