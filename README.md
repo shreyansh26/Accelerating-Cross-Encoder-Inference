@@ -11,13 +11,13 @@ This project demonstrates optimizing the inference of a Cross Encoder model, nam
 
 ## Scripts
 
-### run_basic.py
+### bench_basic.py
 Runs a baseline benchmark with the standard CrossEncoder and Flash Attention enabled.
 
-### run_torch_compile.py
+### bench_torch_compile.py
 Focuses on the torch.compile approach with some custom padding and torch.compile optimizations.
 
-### run_combined.py
+### bench_combined.py
 Compares the baseline with torch.compile optimized version.
 
 ## Implementation Details
@@ -43,6 +43,6 @@ This reflects roughly a 20-25% reduction in inference latency under sorted input
 1. Ensure your environment has CUDA and the required libraries installed:
    - `pip install sentence-transformers torch`
 2. Execute the benchmark scripts:
-   - `CUDA_VISIBLE_DEVICES=0 python run_basic.py`
-   - `CUDA_VISIBLE_DEVICES=0 python run_torch_compile.py`
-   - `CUDA_VISIBLE_DEVICES=0 python run_combined.py`
+   - `CUDA_VISIBLE_DEVICES=0 python bench_basic.py`
+   - `CUDA_VISIBLE_DEVICES=0 python bench_torch_compile.py`
+   - `CUDA_VISIBLE_DEVICES=0 python bench_combined.py`

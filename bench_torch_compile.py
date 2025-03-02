@@ -1,9 +1,8 @@
 import torch
 from sentence_transformers import CrossEncoder
-from bench import benchmark, test_model
+from bench_utils import benchmark
 
 BUCKETS = list(range(16, 512, 16))
-
 class DynamicCrossEncoder(CrossEncoder):
     def smart_batching_collate_text_only(self, batch):
         texts = [[text.strip() for text in field] for field in zip(*batch)]
@@ -26,18 +25,12 @@ class DynamicCrossEncoder(CrossEncoder):
                 tokenized[key] = torch.nn.functional.pad(val, (0, diff), value=pad_value)
         return tokenized
 
-model = CrossEncoder(
-    "jinaai/jina-reranker-v2-base-multilingual",
-    trust_remote_code=True,
-    device="cuda",
-    max_length=512
-)
-
 model_compile = DynamicCrossEncoder(
     "jinaai/jina-reranker-v2-base-multilingual",
     trust_remote_code=True,
     device="cuda",
-    config_args={"use_flash_attn": False}
+    config_args={"use_flash_attn": False},
+    max_length=512
 )
 
 model_compile.model.forward = torch.compile(
@@ -47,13 +40,7 @@ model_compile.model.forward = torch.compile(
     dynamic=True
 )
 
-benchmark(model, print_scores=True, on_sorted_inputs=True, seed=100)
-benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=100)
+benchmark(model_compile, print_scores=True, on_sorted_inputs=True, seed=1000)
 
-test_model(model)
-test_model(model_compile)
-
-# Base (with flash attn) + Sorted Inputs - Mean time: 0.2658 ± 0.0119 seconds
-# Base (with flash attn) + Unsorted Inputs - Mean time: 0.2961 ± 0.0089 seconds
-# torch.compile (without flash attn) + Sorted Inputs - Mean time: 0.2089 ± 0.0196 seconds
-# torch.compile (without flash attn) + Unsorted Inputs - Mean time: 0.2595 ± 0.0077 seconds
+# Sorted Inputs - Mean time: 0.2106 ± 0.0019 seconds
+# Unsorted Inputs - Mean time: 0.2673 ± 0.0046 seconds

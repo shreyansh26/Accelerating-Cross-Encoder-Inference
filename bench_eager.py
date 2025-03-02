@@ -1,5 +1,5 @@
 from sentence_transformers import CrossEncoder
-from bench import benchmark
+from bench_utils import benchmark
 
 model = CrossEncoder(
     "jinaai/jina-reranker-v2-base-multilingual",
