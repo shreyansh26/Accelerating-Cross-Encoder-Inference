@@ -30,12 +30,12 @@ Compares the baseline with torch.compile optimized version.
 
 ## Speedup Analysis
 
-The torch.compile optimized version shows significant speedups compared to the baseline (batch size 64):
+The torch.compile optimized version shows significant speedups compared to the baseline (batch size 64, H100 GPU):
 
 | Setup                                      | Sorted Inputs (s)       | Unsorted Inputs (s)      |
 | ------------------------------------------ | ----------------------- | ------------------------ |
-| Base (with Flash Attention)                | 0.2721 ± 0.0060         | 0.3007 ± 0.0141          |
-| torch.compile                              | 0.2104 ± 0.0035         | 0.2570 ± 0.0118          |
+| Base (with Flash Attention)                | 0.2658 ± 0.0119         | 0.2961 ± 0.0089          |
+| torch.compile                              | 0.2089 ± 0.0196         | 0.2595 ± 0.0077          |
 
 This reflects roughly a 20-25% reduction in inference latency under sorted inputs, with similar gains observed for unsorted inputs.
 
