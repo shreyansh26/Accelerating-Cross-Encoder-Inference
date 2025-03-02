@@ -44,5 +44,5 @@ This reflects roughly a 20-25% reduction in inference latency under sorted input
    - `pip install sentence-transformers torch`
 2. Execute the benchmark scripts:
    - `CUDA_VISIBLE_DEVICES=0 python run_basic.py`
-   - `CUDA_VISIBLE_DEVICES=0 python run_combined.py`
    - `CUDA_VISIBLE_DEVICES=0 python run_torch_compile.py`
+   - `CUDA_VISIBLE_DEVICES=0 python run_combined.py`
